@@ -1,7 +1,7 @@
 """Simulated adversarial RF channel multiplexing electronic warfare attacks."""
 
 import random
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Any
 from securelink.core.config import AttackConfig
 from securelink.simulation.attacks.tamper import TamperAttacker
 from securelink.simulation.attacks.replay import ReplayAttacker
