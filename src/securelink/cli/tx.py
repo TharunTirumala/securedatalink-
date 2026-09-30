@@ -18,6 +18,7 @@ from securelink.cli.common import (
     parse_host_port,
     session_id_to_uint32,
     post_json_background,
+    flush_posts,
     setup_stdio,
     GracefulExit,
 )
@@ -79,7 +80,8 @@ def run_tx(args):
 
     sent_count, start_time = 0, time.time()
     last_stats_post, last_epoch_reported = 0.0, 1
-    rate_interval = (1.0 / args.rate_pps) if args.rate_pps > 0 else 0.0
+    pace_internally = (args.source not in ("mavlink",))
+    rate_interval = (1.0 / args.rate_pps) if (args.rate_pps > 0 and pace_internally) else 0.0
 
     try:
         for orig_ts, raw_payload, row_idx in source_iter:
@@ -128,7 +130,7 @@ def run_tx(args):
                 print(f"TX: {lbl} -> {len(wire_bytes)}B (sha {f_sha[:8]}) total {sent_count}")
 
             # Background stats reporting
-            if args.dashboard and (now - last_stats_post >= 0.5):
+            if args.dashboard and (now - last_stats_post >= 0.1):
                 last_stats_post = now
                 elapsed = max(0.001, now - start_time)
                 post_json_background(f"{args.dashboard}/api/ingest/stats", {
@@ -157,6 +159,7 @@ def run_tx(args):
                 "stats": {"sent": sent_count, "epoch": last_epoch_reported, "rate": round(sent_count / max(0.001, duration), 1)},
                 "protect": args.protect,
             }, token=args.token)
+            flush_posts(timeout=2.0)
         if manifest_f:
             manifest_f.write(json.dumps({
                 "type": "summary", "sent": sent_count,

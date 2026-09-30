@@ -24,8 +24,6 @@ export function mountTransport(container) {
           <button class="btn btn-secondary" id="tab-tr-reconcile">RECONCILIATION AUDIT</button>
         </div>
       </header>
-
-      <!-- Main Live Transmission View -->
       <div id="pane-tr-live">
         <div class="transport-grid-2col">
           <div id="col-tr-setup"></div>
@@ -35,13 +33,8 @@ export function mountTransport(container) {
           </div>
         </div>
       </div>
-
-      <!-- Verification and Reconciliation View -->
-      <div id="pane-tr-reconcile" style="display:none;">
-        <div id="col-tr-verify"></div>
-      </div>
-    </div>
-  `;
+      <div id="pane-tr-reconcile" style="display:none;"><div id="col-tr-verify"></div></div>
+    </div>`;
 
   const paneLive = container.querySelector('#pane-tr-live');
   const paneReconcile = container.querySelector('#pane-tr-reconcile');
@@ -204,39 +197,55 @@ export function mountTransport(container) {
     }
   }
 
+  let isStatusFetching = false;
+  let isLiveFetching = false;
+  let pollTick = 0;
+
   function startPolling() {
     stopPolling();
-    pollInterval = setInterval(async () => {
-      try {
-        const [liveResp, statusResp] = await Promise.all([
-          fetch('/api/ingest/live'),
-          fetch('/api/transport/status'),
-        ]);
+    pollTick = 0;
+    pollInterval = setInterval(() => {
+      pollTick++;
 
-        if (liveResp.ok) {
-          const live = await liveResp.json();
-          droneCard.updateTelemetry(live.drone, live.c2, live.divergence_m);
-        }
-
-        if (statusResp.ok) {
-          const stData = await statusResp.json();
-          if (stData.counters) {
-            liveCard.updateCounters(stData.counters);
-          }
-          if (stData.session_id) {
-            liveCard.setSessionInfo(stData.session_id, stData.seed);
-          }
-          if (stData.state === 'finished' || stData.state === 'stopped' || stData.state === 'idle') {
-            stopPolling();
-            setupCard.setRunning(false);
-            liveCard.setStatus(stData.session_id ? 'FINISHED // READY' : 'IDLE // READY', 'var(--c-cyan)');
-            if (activeSessionId) fetchReconcileReport(activeSessionId);
-          }
-        }
-      } catch (e) {
-        // Quiet poll error
+      if (!isStatusFetching) {
+        isStatusFetching = true;
+        fetch('/api/transport/status')
+          .then((r) => (r.ok ? r.json() : null))
+          .then((stData) => {
+            if (!stData) return;
+            if (stData.counters) {
+              liveCard.updateCounters(stData.counters);
+            }
+            if (stData.session_id) {
+              liveCard.setSessionInfo(stData.session_id, stData.seed);
+            }
+            if (stData.state === 'finished' || stData.state === 'stopped' || stData.state === 'idle') {
+              stopPolling();
+              setupCard.setRunning(false);
+              liveCard.setStatus(stData.session_id ? 'FINISHED // READY' : 'IDLE // READY', 'var(--c-cyan)');
+              if (activeSessionId) fetchReconcileReport(activeSessionId);
+            }
+          })
+          .catch(() => {})
+          .finally(() => {
+            isStatusFetching = false;
+          });
       }
-    }, 500);
+
+      if (pollTick % 2 === 0 && !isLiveFetching) {
+        isLiveFetching = true;
+        fetch('/api/ingest/live')
+          .then((r) => (r.ok ? r.json() : null))
+          .then((live) => {
+            if (!live) return;
+            droneCard.updateTelemetry(live.drone, live.c2, live.divergence_m);
+          })
+          .catch(() => {})
+          .finally(() => {
+            isLiveFetching = false;
+          });
+      }
+    }, 250);
   }
 
   function stopPolling() {

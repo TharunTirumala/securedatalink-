@@ -75,3 +75,52 @@ def test_transport_api_lifecycle(client):
     assert resp_rec.status_code == 200
     rec_data = resp_rec.json()
     assert "frame_reconciliation" in rec_data
+
+
+def test_transport_counter_freshness_and_invariants(client):
+    sid = "test-freshness-1"
+    from dashboard.backend.transport_state import get_session_counters, reset_session_counters
+    reset_session_counters(sid)
+
+    # (a) posting rx stats with total=10 before events does NOT change received (stays 0)
+    resp_stats = client.post("/api/ingest/stats", json={
+        "component": "rx",
+        "session_id": sid,
+        "counts": {"total": 10, "AUTHENTIC": 10},
+        "received": 10,
+    })
+    assert resp_stats.status_code == 200
+    cnts = get_session_counters(sid)
+    assert cnts["received"] == 0, f"Expected received=0 before events, got {cnts['received']}"
+
+    # (b) then posting 10 events sets received == 10 exactly
+    events = [
+        {"seq": i, "epoch": 1, "verdict": "AUTHENTIC", "reason": "valid_signature"}
+        for i in range(1, 11)
+    ]
+    resp_ev = client.post("/api/ingest/events", json={
+        "session_id": sid,
+        "events": events,
+    })
+    assert resp_ev.status_code == 200
+    cnts = get_session_counters(sid)
+    assert cnts["received"] == 10, f"Expected received=10 after events, got {cnts['received']}"
+    assert cnts["authentic"] == 10
+
+    # (c) tx sent counter never decreases with out-of-order posts
+    client.post("/api/ingest/stats", json={
+        "component": "tx",
+        "session_id": sid,
+        "sent": 25,
+    })
+    cnts = get_session_counters(sid)
+    assert cnts["sent"] == 25
+
+    # Out-of-order post with lower sent count
+    client.post("/api/ingest/stats", json={
+        "component": "tx",
+        "session_id": sid,
+        "sent": 18,
+    })
+    cnts = get_session_counters(sid)
+    assert cnts["sent"] == 25, f"Expected sent to remain 25, got {cnts['sent']}"

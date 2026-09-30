@@ -104,7 +104,7 @@ export function createLiveCard() {
     if (renderScheduled) return;
     renderScheduled = true;
     const now = performance.now();
-    const delay = Math.max(0, 100 - (now - lastRenderTime));
+    const delay = Math.max(0, 60 - (now - lastRenderTime));
     setTimeout(() => {
       renderScheduled = false;
       lastRenderTime = performance.now();
@@ -113,7 +113,8 @@ export function createLiveCard() {
   }
 
   function doRender() {
-    cntSent.textContent = stats.sent || 0;
+    const dispSent = Math.max(stats.sent || 0, stats.recv || 0);
+    cntSent.textContent = dispSent;
     cntRecv.textContent = stats.recv || 0;
     cntAuth.textContent = stats.auth || 0;
     cntTamp.textContent = stats.tamp || 0;
@@ -142,14 +143,16 @@ export function createLiveCard() {
     },
     updateCounters(newStats) {
       if (!newStats) return;
+      const rawSent = newStats.sent || 0;
+      const rawRecv = newStats.received !== undefined ? newStats.received : (newStats.recv || 0);
       stats = {
-        sent: newStats.sent || 0,
-        recv: newStats.received !== undefined ? newStats.received : (newStats.recv || 0),
-        auth: newStats.authentic !== undefined ? newStats.authentic : (newStats.auth || 0),
-        tamp: newStats.tampered !== undefined ? newStats.tampered : (newStats.tamp || 0),
-        repl: newStats.replayed !== undefined ? newStats.replayed : (newStats.repl || 0),
-        spoof: newStats.spoofed !== undefined ? newStats.spoofed : (newStats.spoof || 0),
-        drop: newStats.dropped !== undefined ? newStats.dropped : (newStats.drop || 0),
+        sent: Math.max(stats.sent, rawSent),
+        recv: Math.max(stats.recv, rawRecv),
+        auth: Math.max(stats.auth, newStats.authentic !== undefined ? newStats.authentic : (newStats.auth || 0)),
+        tamp: Math.max(stats.tamp, newStats.tampered !== undefined ? newStats.tampered : (newStats.tamp || 0)),
+        repl: Math.max(stats.repl, newStats.replayed !== undefined ? newStats.replayed : (newStats.repl || 0)),
+        spoof: Math.max(stats.spoof, newStats.spoofed !== undefined ? newStats.spoofed : (newStats.spoof || 0)),
+        drop: Math.max(stats.drop, newStats.dropped !== undefined ? newStats.dropped : (newStats.drop || 0)),
         fa: newStats.false_accepts !== undefined ? newStats.false_accepts : (newStats.fa || 0),
       };
       scheduleRender();

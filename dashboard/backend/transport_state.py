@@ -116,16 +116,12 @@ def record_tx_stats(sid: str, sent_count: int, epoch: int = 1, rate: float = 0.0
 
 
 def record_rx_stats(sid: str, counts: Dict[str, int], total_received: Optional[int] = None):
-    """Update sent/received from /stats payload.
+    """Handle rx stats report.
 
-    IMPORTANT: Verdict counts (authentic/tampered/replayed/spoofed) are NOT updated here.
-    They are computed exclusively from record_rx_events() which deduplicates on (epoch, seq)
-    to prevent double-counting when both /stats and /events are posted.
+    `received` is computed exclusively from record_rx_events() to ensure
+    exact alignment with verdict counts and prevent double-counting.
     """
-    with ingest_lock:
-        c = _get_or_create_counters_locked(sid)
-        tot = total_received if total_received is not None else counts.get("total", 0)
-        c.received = max(c.received, tot)
+    pass
 
 
 def record_attacker_stats(sid: str, stats: Dict[str, Any]):
