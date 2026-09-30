@@ -1,5 +1,6 @@
 """Transport control routes for starting, stopping, and inspecting UDP sessions."""
 
+import os
 import secrets
 import time
 from typing import Any, Dict, List, Optional
@@ -21,7 +22,6 @@ router = APIRouter(prefix="/api/transport", tags=["transport"])
 
 @router.get("/role")
 def get_role():
-    import os
     role = os.environ.get("SECURELINK_ROLE", "full").lower()
     if role not in ("full", "sender", "receiver"):
         role = "full"
@@ -65,7 +65,7 @@ class StartTransportRequest(BaseModel):
     rx_port: int = 9999
     c2_port: int = 14551
     keys_dir: str = "keys"
-    dashboard_url: str = "http://127.0.0.1:8000"
+    dashboard_url: str = Field(default_factory=lambda: f"http://127.0.0.1:{os.environ.get('PORT', '8000')}")
     restart: bool = False
 
 
@@ -95,6 +95,9 @@ def start_transport(req: StartTransportRequest):
     data = req.model_dump()
     data["session_id"] = sid
     data.pop("restart", None)
+    port = os.environ.get("PORT")
+    if port and (not data.get("dashboard_url") or data.get("dashboard_url") == "http://127.0.0.1:8000"):
+        data["dashboard_url"] = f"http://127.0.0.1:{port}"
     cfg = SessionConfig.from_dict(data)
 
     try:

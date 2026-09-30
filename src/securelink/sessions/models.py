@@ -1,5 +1,6 @@
 """Session configuration and lifecycle models."""
 
+import os
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, Optional
 
@@ -25,7 +26,7 @@ class SessionConfig:
     rx_port: int = 9999
     c2_port: int = 14551
     keys_dir: str = "keys"
-    dashboard_url: str = "http://127.0.0.1:8000"
+    dashboard_url: str = field(default_factory=lambda: f"http://127.0.0.1:{os.environ.get('PORT', '8000')}")
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
