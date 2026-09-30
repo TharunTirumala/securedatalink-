@@ -5,9 +5,10 @@ import { createSetupCard } from './setup.js';
 import { createLiveCard } from './live.js';
 import { createDroneCard } from './drone.js';
 import { createVerifyCard } from './verify.js';
+import { createTransportPoller } from './poll.js';
 
 let activeSessionId = null;
-let pollInterval = null;
+let currentPoller = null;
 let syncInterval = null;
 let lastUsedConfig = null;
 
@@ -66,6 +67,17 @@ export function mountTransport(container) {
   container.querySelector('#col-tr-drone').appendChild(droneCard.element);
   container.querySelector('#col-tr-verify').appendChild(verifyCard.element);
 
+  const poller = createTransportPoller({
+    liveCard,
+    droneCard,
+    setupCard,
+    onFinished: (sid) => {
+      activeSessionId = sid;
+      fetchReconcileReport(sid);
+    },
+  });
+  currentPoller = poller;
+
   // Check split-portal role
   fetch('/api/transport/role')
     .then((r) => r.json())
@@ -93,17 +105,13 @@ export function mountTransport(container) {
       if (data.state === 'running') {
         setupCard.setRunning(true);
         liveCard.setStatus('ACTIVE // TRANSMITTING', '#00ff88');
-        if (!pollInterval) startPolling();
+        poller.start();
       } else if (data.state === 'stopping') {
         setupCard.setRunning(false);
         liveCard.setStatus('STOPPING...', 'var(--c-amber)');
       } else {
         setupCard.setRunning(false);
-        if (data.session_id) {
-          liveCard.setStatus('FINISHED // READY', 'var(--c-cyan)');
-        } else {
-          liveCard.setStatus('IDLE // READY', 'var(--c-cyan)');
-        }
+        liveCard.setStatus(data.session_id ? 'FINISHED // READY' : 'IDLE // READY', 'var(--c-cyan)');
       }
     } catch (e) {
       // Quiet sync error
@@ -121,8 +129,11 @@ export function mountTransport(container) {
       liveCard.reset();
       droneCard.reset();
     }
+    // Set waiting status and start polling immediately before POST returns
+    droneCard.setWaiting(true);
     liveCard.setStatus('STARTING PROCESSES...', 'var(--c-amber)');
     setupCard.setRunning(true);
+    poller.start();
 
     try {
       const payload = { ...cfg, restart };
@@ -133,6 +144,7 @@ export function mountTransport(container) {
       });
       const data = await resp.json();
       if (!resp.ok) {
+        poller.stop();
         setupCard.setRunning(false);
         if (resp.status === 409) {
           const sid = data.session_id || 'active';
@@ -146,9 +158,8 @@ export function mountTransport(container) {
       }
       activeSessionId = data.session_id;
       liveCard.setSessionInfo(data.session_id, cfg.drone_seed);
-      liveCard.setStatus('ACTIVE // TRANSMITTING', '#00ff88');
-      startPolling();
     } catch (err) {
+      poller.stop();
       setupCard.setRunning(false);
       liveCard.setStatus('FAILED TO START', '#ff3366');
       setupCard.showError(`Network error starting session: ${err.message}`);
@@ -157,13 +168,13 @@ export function mountTransport(container) {
 
   async function handleStop() {
     liveCard.setStatus('STOPPING...', 'var(--c-amber)');
+    poller.stop();
     try {
       await fetch('/api/transport/stop', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: activeSessionId || null }),
       });
-      stopPolling();
       setupCard.setRunning(false);
       liveCard.setStatus('FINISHED // READY', 'var(--c-cyan)');
       if (activeSessionId) await fetchReconcileReport(activeSessionId);
@@ -197,64 +208,6 @@ export function mountTransport(container) {
     }
   }
 
-  let isStatusFetching = false;
-  let isLiveFetching = false;
-  let pollTick = 0;
-
-  function startPolling() {
-    stopPolling();
-    pollTick = 0;
-    pollInterval = setInterval(() => {
-      pollTick++;
-
-      if (!isStatusFetching) {
-        isStatusFetching = true;
-        fetch('/api/transport/status')
-          .then((r) => (r.ok ? r.json() : null))
-          .then((stData) => {
-            if (!stData) return;
-            if (stData.counters) {
-              liveCard.updateCounters(stData.counters);
-            }
-            if (stData.session_id) {
-              liveCard.setSessionInfo(stData.session_id, stData.seed);
-            }
-            if (stData.state === 'finished' || stData.state === 'stopped' || stData.state === 'idle') {
-              stopPolling();
-              setupCard.setRunning(false);
-              liveCard.setStatus(stData.session_id ? 'FINISHED // READY' : 'IDLE // READY', 'var(--c-cyan)');
-              if (activeSessionId) fetchReconcileReport(activeSessionId);
-            }
-          })
-          .catch(() => {})
-          .finally(() => {
-            isStatusFetching = false;
-          });
-      }
-
-      if (pollTick % 2 === 0 && !isLiveFetching) {
-        isLiveFetching = true;
-        fetch('/api/ingest/live')
-          .then((r) => (r.ok ? r.json() : null))
-          .then((live) => {
-            if (!live) return;
-            droneCard.updateTelemetry(live.drone, live.c2, live.divergence_m);
-          })
-          .catch(() => {})
-          .finally(() => {
-            isLiveFetching = false;
-          });
-      }
-    }, 250);
-  }
-
-  function stopPolling() {
-    if (pollInterval) {
-      clearInterval(pollInterval);
-      pollInterval = null;
-    }
-  }
-
   async function fetchReconcileReport(sid) {
     try {
       const resp = await fetch(`/api/transport/session/${sid}/reconcile`);
@@ -276,7 +229,7 @@ export function mountTransport(container) {
 
   return {
     unmount() {
-      stopPolling();
+      poller.stop();
       if (syncInterval) {
         clearInterval(syncInterval);
         syncInterval = null;
@@ -287,9 +240,9 @@ export function mountTransport(container) {
 }
 
 export function unmountTransport() {
-  if (pollInterval) {
-    clearInterval(pollInterval);
-    pollInterval = null;
+  if (currentPoller) {
+    currentPoller.stop();
+    currentPoller = null;
   }
   if (syncInterval) {
     clearInterval(syncInterval);

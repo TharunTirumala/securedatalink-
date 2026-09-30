@@ -45,12 +45,37 @@ export function createDroneCard() {
   const c2Trail = [];
   let homeLat = 37.7749;
   let homeLon = -122.4194;
+  let isWaiting = false;
+
+  function setWaiting(waiting) {
+    isWaiting = Boolean(waiting);
+    if (isWaiting) {
+      latEl.textContent = '--';
+      lonEl.textContent = '--';
+      altEl.textContent = '--';
+      batEl.textContent = '--';
+      divEl.textContent = '--';
+      divEl.className = 'divergence-val safe';
+      truthTrail.length = 0;
+      c2Trail.length = 0;
+    }
+    renderRadar();
+  }
 
   function renderRadar() {
     if (!ctx) return;
     const w = canvas.width;
     const h = canvas.height;
     ctx.clearRect(0, 0, w, h);
+
+    if (isWaiting) {
+      ctx.fillStyle = '#718096';
+      ctx.font = '12px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('WAITING FOR TELEMETRY...', w / 2, h / 2);
+      return;
+    }
 
     // Draw radar grid
     ctx.strokeStyle = '#141f30';
@@ -107,8 +132,10 @@ export function createDroneCard() {
 
   return {
     element: container,
+    setWaiting,
     updateTelemetry(drone, c2, divergenceM) {
       if (drone) {
+        if (isWaiting) isWaiting = false;
         if (drone.lat != null) latEl.textContent = drone.lat.toFixed(5);
         if (drone.lon != null) lonEl.textContent = drone.lon.toFixed(5);
         if (drone.alt_m != null || drone.alt != null) {
@@ -131,21 +158,13 @@ export function createDroneCard() {
 
       if (divergenceM !== undefined && divergenceM !== null) {
         divEl.textContent = `${divergenceM.toFixed(1)} m`;
-        if (divergenceM > 5.0) {
-          divEl.className = 'divergence-val diverged';
-        } else {
-          divEl.className = 'divergence-val safe';
-        }
+        divEl.className = divergenceM > 5.0 ? 'divergence-val diverged' : 'divergence-val safe';
       }
 
       renderRadar();
     },
     reset() {
-      truthTrail.length = 0;
-      c2Trail.length = 0;
-      divEl.textContent = '0.0 m';
-      divEl.className = 'divergence-val safe';
-      renderRadar();
+      setWaiting(true);
     }
   };
 }

@@ -16,6 +16,7 @@ from securelink.sessions.reconcile import reconcile_session
 from securelink.sessions.store import SessionStore
 from securelink.sessions.telemetry_reconcile import reconcile_telemetry
 from securelink.sessions.proc_cmds import build_process_commands
+from securelink.sessions.readiness import ready_dir
 
 
 class SessionManager:
@@ -128,26 +129,36 @@ class SessionManager:
             pids: Dict[str, int] = {}
             self.processes = {}
 
+            # Prepare readiness directory and clear stale markers
+            r_dir = ready_dir(s_dir)
+            for old_ready in r_dir.glob("*.ready"):
+                try:
+                    old_ready.unlink()
+                except Exception:
+                    pass
+
             try:
-                for name in ("c2", "rx", "attacker", "tx", "drone"):
+                # Launch drone first (heavier import), followed immediately by tx, attacker, rx, c2
+                for name in ("drone", "tx", "attacker", "rx", "c2"):
                     if name in cmds:
                         p = subprocess.Popen(cmds[name], stdout=self.log_handles[name], stderr=subprocess.STDOUT, env=env)
                         self.processes[name] = p
                         pids[name] = p.pid
-                        time.sleep(0.1)
 
                 state = SessionState(session_id=config.session_id, status="running", start_time=time.time(), pids=pids)
                 self.store.save_state(state)
 
-                # Liveness check: verify all processes still alive after brief settle
-                time.sleep(0.5)
-                failed = [(n, p) for n, p in self.processes.items() if p.poll() is not None and p.returncode != 0]
-                if failed:
-                    name, proc = failed[0]
-                    log_path = s_dir / "logs" / f"{name}.log"
-                    tail = self._read_tail(log_path)
-                    self._do_stop_locked(config.session_id, mark_status="failed")
-                    raise RuntimeError(f"Process '{name}' exited with code {proc.returncode} immediately after start.\nLast log:\n{tail}")
+                # Liveness check: poll at most 0.3s, returning early if any process exited non-zero
+                poll_deadline = time.monotonic() + 0.3
+                while time.monotonic() < poll_deadline:
+                    failed = [(n, p) for n, p in self.processes.items() if p.poll() is not None and p.returncode != 0]
+                    if failed:
+                        name, proc = failed[0]
+                        log_path = s_dir / "logs" / f"{name}.log"
+                        tail = self._read_tail(log_path)
+                        self._do_stop_locked(config.session_id, mark_status="failed")
+                        raise RuntimeError(f"Process '{name}' exited with code {proc.returncode} immediately after start.\nLast log:\n{tail}")
+                    time.sleep(0.02)
 
                 # Start background monitoring thread
                 threading.Thread(target=self._watchdog, args=(config.session_id,), daemon=True).start()
@@ -187,10 +198,10 @@ class SessionManager:
 
                 if fail_reason:
                     break
-                time.sleep(0.2)
+                time.sleep(0.05)
 
             # Draining window
-            time.sleep(0.6)
+            time.sleep(0.35)
         except Exception as e:
             print(f"[SessionManager] Watchdog error: {e}")
         finally:

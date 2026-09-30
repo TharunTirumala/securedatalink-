@@ -2,6 +2,7 @@
 
 import sys
 import time
+_t_start = time.perf_counter()
 import json
 import argparse
 import hashlib
@@ -78,6 +79,15 @@ def run_tx(args):
                 yield pkt.timestamp, pkt.to_bytes(), seq
         source_iter = _syn_gen()
 
+    import_sec = time.perf_counter() - _t_start
+    print(f"READY name=tx t={time.time()} import_sec={import_sec:.4f}", flush=True)
+    if getattr(args, "ready_file", None):
+        try:
+            from securelink.sessions.readiness import mark_ready
+            mark_ready(args.ready_file)
+        except Exception:
+            pass
+
     sent_count, start_time = 0, time.time()
     last_stats_post, last_epoch_reported = 0.0, 1
     pace_internally = (args.source not in ("mavlink",))
@@ -147,6 +157,9 @@ def run_tx(args):
                 if sleep_sec > 0:
                     time.sleep(sleep_sec)
 
+            if count is not None and sent_count >= count:
+                break
+
     finally:
         sender.close()
         if mav_source:
@@ -159,7 +172,7 @@ def run_tx(args):
                 "stats": {"sent": sent_count, "epoch": last_epoch_reported, "rate": round(sent_count / max(0.001, duration), 1)},
                 "protect": args.protect,
             }, token=args.token)
-            flush_posts(timeout=2.0)
+            flush_posts(timeout=0.5)
         if manifest_f:
             manifest_f.write(json.dumps({
                 "type": "summary", "sent": sent_count,
@@ -186,6 +199,7 @@ def main():
     parser.add_argument("--manifest", help="Path to write tx_manifest.jsonl")
     parser.add_argument("--dashboard", default="http://127.0.0.1:8000", help="Dashboard URL")
     parser.add_argument("--token", default=None, help="API token for dashboard ingest")
+    parser.add_argument("--ready-file", default=None, help="Path to touch when socket is bound")
     args = parser.parse_args()
     run_tx(args)
 

@@ -2,6 +2,7 @@
 
 import sys
 import time
+_t_start = time.perf_counter()
 import json
 import base64
 import argparse
@@ -30,6 +31,14 @@ def run_rx(args):
     exit_handler = GracefulExit()
     listen_host, listen_port = parse_host_port(args.listen, default_host="127.0.0.1", default_port=9999)
     receiver = UdpReceiver(listen_host, listen_port)
+    import_sec = time.perf_counter() - _t_start
+    print(f"READY name=rx t={time.time()} import_sec={import_sec:.4f}", flush=True)
+    if getattr(args, "ready_file", None):
+        try:
+            from securelink.sessions.readiness import mark_ready
+            mark_ready(args.ready_file)
+        except Exception:
+            pass
     receiver.drain_buffer()
     expected_sess_uint = session_id_to_uint32(args.session_id) if args.session_id else None
 
@@ -270,6 +279,7 @@ def main():
     parser.add_argument("--mavlink-out", default=None, help="Destination HOST:PORT for clean MAVLink")
     parser.add_argument("--print-payload", action="store_true", help="Print payload details")
     parser.add_argument("--max-clock-skew", type=float, default=30.0, help="Max clock skew in seconds for STALE_TIMESTAMP")
+    parser.add_argument("--ready-file", default=None, help="Path to touch when socket is bound")
     args = parser.parse_args()
     run_rx(args)
 

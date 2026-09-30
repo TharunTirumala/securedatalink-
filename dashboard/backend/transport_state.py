@@ -19,6 +19,15 @@ session_stats_cache: Dict[str, Dict[str, Any]] = {}
 live_divergence_m: float = 0.0
 
 
+def reset_live_telemetry():
+    """Clear cached live telemetry between transport runs."""
+    global latest_drone_telemetry, latest_c2_telemetry, live_divergence_m
+    with ingest_lock:
+        latest_drone_telemetry = None
+        latest_c2_telemetry = None
+        live_divergence_m = 0.0
+
+
 @dataclass
 class SessionCounters:
     sent: int = 0
@@ -216,6 +225,15 @@ def _recompute_divergence_locked():
         c_lat, c_lon = latest_c2_telemetry.get("lat"), latest_c2_telemetry.get("lon")
         if d_lat is not None and d_lon is not None and c_lat is not None and c_lon is not None:
             live_divergence_m = round(haversine_m(d_lat, d_lon, c_lat, c_lon), 2)
+
+
+def get_live_telemetry() -> Dict[str, Any]:
+    with ingest_lock:
+        return {
+            "drone": latest_drone_telemetry,
+            "c2": latest_c2_telemetry,
+            "divergence_m": live_divergence_m,
+        }
 
 
 def get_live_state() -> Dict[str, Any]:

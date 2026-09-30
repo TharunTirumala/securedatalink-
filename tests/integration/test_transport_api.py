@@ -124,3 +124,125 @@ def test_transport_counter_freshness_and_invariants(client):
     })
     cnts = get_session_counters(sid)
     assert cnts["sent"] == 25, f"Expected sent to remain 25, got {cnts['sent']}"
+
+
+def test_reset_live_telemetry_and_status_live_flag(client):
+    import time
+    from dashboard.backend.transport_state import update_drone_telemetry, reset_live_telemetry
+
+    # Feed drone telemetry
+    update_drone_telemetry({"lat": 37.77, "lon": -122.41, "alt_m": 12.0})
+
+    # Status without live=1 keeps same keys as before
+    resp = client.get("/api/transport/status")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "live" not in data
+    assert set(data.keys()) == {"state", "session_id", "uptime_sec", "seed", "protect", "counters"}
+
+    # Status with live=1 adds "live" containing drone, c2, divergence_m
+    resp_live = client.get("/api/transport/status?live=1")
+    assert resp_live.status_code == 200
+    data_live = resp_live.json()
+    assert "live" in data_live
+    assert "drone" in data_live["live"]
+    assert "c2" in data_live["live"]
+    assert "divergence_m" in data_live["live"]
+    assert data_live["live"]["drone"]["lat"] == 37.77
+
+    # reset_live_telemetry clears stale telemetry
+    reset_live_telemetry()
+    resp_cleared = client.get("/api/transport/status?live=1")
+    assert resp_cleared.json()["live"]["drone"] is None
+
+
+def test_transport_start_duration_under_one_second(client):
+    import time
+    client.post("/api/transport/stop", json={})
+    time.sleep(0.1)
+
+    t0 = time.perf_counter()
+    resp = client.post("/api/transport/start", json={
+        "session_id": "test_fast_start_1",
+        "source_type": "synthetic",
+        "count": 20,
+        "rate_pps": 50,
+        "protect": True,
+        "restart": True,
+    })
+    elapsed = time.perf_counter() - t0
+    assert resp.status_code == 200
+    assert elapsed < 1.0, f"Expected start to return in < 1.0s, took {elapsed:.3f}s"
+    client.post("/api/transport/stop", json={})
+
+
+def test_drone_session_e2e_reaches_sent_and_telemetry_under_ten_seconds(client):
+    import time
+    import socket
+    import threading
+    import uvicorn
+    from dashboard.backend.server import app
+
+    client.post("/api/transport/stop", json={})
+    time.sleep(0.1)
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
+    srv_thread = threading.Thread(target=server.run, daemon=True)
+    srv_thread.start()
+    time.sleep(0.2)
+
+    sid = f"drone_e2e_{int(time.time())}"
+    try:
+        resp = client.post("/api/transport/start", json={
+            "session_id": sid,
+            "source_type": "drone",
+            "count": 100,
+            "rate_pps": 20,
+            "protect": True,
+            "attack_mode": "pass",
+            "dashboard_url": f"http://127.0.0.1:{port}",
+            "restart": True,
+        })
+        assert resp.status_code == 200
+
+        t_start = time.perf_counter()
+        sent_seen, telem_seen = False, False
+
+        deadline = t_start + 10.0
+        while time.perf_counter() < deadline:
+            st = client.get("/api/transport/status?live=1").json()
+            cnt = st.get("counters", {})
+            if cnt.get("sent", 0) > 0:
+                sent_seen = True
+            if st.get("live", {}).get("drone") is not None:
+                telem_seen = True
+            if sent_seen and telem_seen:
+                break
+            time.sleep(0.05)
+
+        assert sent_seen, "Expected counters.sent > 0 within 10s"
+        assert telem_seen, "Expected live drone telemetry within 10s"
+
+        from dashboard.backend.transport_state import get_session_counters
+
+        end_deadline = time.perf_counter() + 15.0
+        while time.perf_counter() < end_deadline:
+            st = client.get("/api/transport/status?live=1").json()
+            cnt = get_session_counters(sid)
+            if cnt.get("sent", 0) >= 100 and cnt.get("received", 0) >= 100:
+                break
+            if st.get("state") in ("finished", "stopped", "idle") and cnt.get("sent", 0) >= 100 and cnt.get("received", 0) >= 100:
+                break
+            time.sleep(0.1)
+
+        final_cnt = get_session_counters(sid)
+        assert final_cnt["sent"] == 100
+        assert final_cnt["received"] == 100
+    finally:
+        client.post("/api/transport/stop", json={})
+        server.should_exit = True
+        srv_thread.join(timeout=1.0)

@@ -28,9 +28,9 @@ def _get_connection(
     conn = connections.get(netloc)
     if conn is None:
         if scheme == "https":
-            conn = http.client.HTTPSConnection(netloc, timeout=2.0)
+            conn = http.client.HTTPSConnection(netloc, timeout=0.3)
         else:
-            conn = http.client.HTTPConnection(netloc, timeout=2.0)
+            conn = http.client.HTTPConnection(netloc, timeout=0.3)
         conn.connect()
         if conn.sock:
             try:
@@ -64,6 +64,7 @@ def _worker_loop():
                 path = f"{path}?{parts.query}"
             body = json.dumps(data).encode("utf-8")
 
+            had_cached = netloc in connections
             try:
                 conn = _get_connection(connections, scheme, netloc)
                 _send_post(conn, path, body, token)
@@ -74,16 +75,17 @@ def _worker_loop():
                         old.close()
                     except Exception:
                         pass
-                try:
-                    conn = _get_connection(connections, scheme, netloc)
-                    _send_post(conn, path, body, token)
-                except Exception:
-                    failed = connections.pop(netloc, None)
-                    if failed:
-                        try:
-                            failed.close()
-                        except Exception:
-                            pass
+                if had_cached:
+                    try:
+                        conn = _get_connection(connections, scheme, netloc)
+                        _send_post(conn, path, body, token)
+                    except Exception:
+                        failed = connections.pop(netloc, None)
+                        if failed:
+                            try:
+                                failed.close()
+                            except Exception:
+                                pass
         finally:
             _post_queue.task_done()
 
@@ -98,7 +100,7 @@ def _ensure_worker_started():
                 _worker_thread = t
 
 
-def flush_posts(timeout: float = 2.0):
+def flush_posts(timeout: float = 0.3):
     """Wait bounded until pending background posts are processed."""
     t0 = time.monotonic()
     while _post_queue.unfinished_tasks > 0:

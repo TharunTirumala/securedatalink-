@@ -1,10 +1,11 @@
 """Simulated UAV Telemetry Generator CLI (MAVLink 2 over UDP)."""
 
+import time
+_t_start = time.perf_counter()
 import argparse
 import json
 import secrets
 import sys
-import time
 from typing import Tuple
 
 from securelink.cli.common import (
@@ -43,6 +44,19 @@ def run_drone_sim(args):
         speed=args.speed,
         seed=seed,
     )
+
+    import_sec = time.perf_counter() - _t_start
+    print(f"READY name=drone t={time.time()} import_sec={import_sec:.4f}", flush=True)
+
+    if getattr(args, "wait_for", None):
+        try:
+            from securelink.sessions.readiness import wait_for_ready
+            timeout = getattr(args, "wait_timeout", 8.0)
+            ok = wait_for_ready(args.wait_for, timeout=timeout)
+            if not ok:
+                print(f"[drone_sim] Warning: Timed out waiting for ready files ({timeout}s), streaming anyway...", flush=True)
+        except Exception:
+            pass
 
     t0 = time.monotonic()
     total_sent = 0
@@ -126,6 +140,8 @@ def main():
     parser.add_argument("--dashboard", default="http://127.0.0.1:8000", help="Dashboard URL")
     parser.add_argument("--session-id", default=None, help="Session UUID or identifier")
     parser.add_argument("--token", default=None, help="API token for dashboard ingest")
+    parser.add_argument("--wait-for", action="append", default=[], help="Wait for ready file before streaming")
+    parser.add_argument("--wait-timeout", type=float, default=8.0, help="Readiness wait timeout in seconds")
     args = parser.parse_args()
     run_drone_sim(args)
 

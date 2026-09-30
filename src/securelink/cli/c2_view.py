@@ -3,18 +3,27 @@
 Listens for clean MAVLink datagrams from RX gateway, logs them, and displays flight status.
 """
 
+import time
+_t_start = time.perf_counter()
 import argparse
 import json
-import time
 from typing import Optional
 
 from securelink.cli.common import GracefulExit, parse_host_port, post_json_background, setup_stdio
 from securelink.transport.udp import UdpReceiver
 
-try:
-    import pymavlink.dialects.v20.common as mavlink2
-except ImportError:
-    mavlink2 = None
+_mav = None
+
+
+def get_mav():
+    global _mav
+    if _mav is None:
+        try:
+            import pymavlink.dialects.v20.common as mavlink2
+            _mav = mavlink2.MAVLink(None)
+        except ImportError:
+            pass
+    return _mav
 
 
 def main():
@@ -26,11 +35,20 @@ def main():
     parser.add_argument("--log", default=None, help="JSONL log path for received telemetry")
     parser.add_argument("--quiet", action="store_true", help="Suppress terminal output")
     parser.add_argument("--token", default=None, help="API token for dashboard ingest")
+    parser.add_argument("--ready-file", default=None, help="Path to touch when socket is bound")
     args = parser.parse_args()
 
     host, port = parse_host_port(args.listen)
     receiver = UdpReceiver(host, port)
-    mav = mavlink2.MAVLink(None) if mavlink2 else None
+    import_sec = time.perf_counter() - _t_start
+    print(f"READY name=c2 t={time.time()} import_sec={import_sec:.4f}", flush=True)
+    if args.ready_file:
+        try:
+            from securelink.sessions.readiness import mark_ready
+            mark_ready(args.ready_file)
+        except Exception:
+            pass
+
     killer = GracefulExit()
 
     log_file = open(args.log, "a", encoding="utf-8") if args.log else None
@@ -46,6 +64,7 @@ def main():
 
             raw, _ = item
             now = time.time()
+            mav = get_mav()
             if not mav:
                 continue
 

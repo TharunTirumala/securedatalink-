@@ -9,8 +9,10 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from dashboard.backend.transport_state import (
+    get_live_telemetry,
     get_session_counters,
     manager,
+    reset_live_telemetry,
     reset_session_counters,
     session_stats_cache,
     store,
@@ -61,13 +63,13 @@ def _cached_running_state(sid: str):
 
 
 @router.get("/status")
-def get_transport_status():
+def get_transport_status(live: int = 0):
     sid = manager.active_session_id
     cfg = _cached_config(sid) if sid else None
     st = _cached_running_state(sid) if sid else None
     uptime = round(time.time() - st.start_time, 1) if (st and st.start_time and not st.end_time) else 0.0
     counters = get_session_counters(sid)
-    return {
+    res = {
         "state": manager.state_name,
         "session_id": sid,
         "uptime_sec": uptime,
@@ -75,6 +77,9 @@ def get_transport_status():
         "protect": cfg.protect if cfg else True,
         "counters": counters,
     }
+    if live == 1:
+        res["live"] = get_live_telemetry()
+    return res
 
 
 class StartTransportRequest(BaseModel):
@@ -134,6 +139,7 @@ def start_transport(req: StartTransportRequest):
 
     try:
         reset_session_counters(sid)
+        reset_live_telemetry()
         st = manager.start_session(cfg, restart=req.restart)
         return {"status": "started", "session_id": sid, "state": st.to_dict()}
     except RuntimeError as e:

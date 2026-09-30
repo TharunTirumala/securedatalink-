@@ -3,6 +3,8 @@
 Strict isolation: NEVER import crypto, rx_pipeline, tx_pipeline, or keystores.
 """
 
+import time
+_t_start = time.perf_counter()
 import argparse
 import hashlib
 import http.server
@@ -12,18 +14,12 @@ import random
 import struct
 import sys
 import threading
-import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from securelink.cli.common import GracefulExit, parse_host_port, post_json_background, setup_stdio
 from securelink.simulation.attacks.mavlink_modes import MavlinkMutator
 from securelink.simulation.attacks.wire_modes import (
-    WireJammer,
-    WireReplayBuffer,
-    apply_wire_drop,
-    apply_wire_pass,
-    apply_wire_spoof,
-    apply_wire_tamper,
+    WireJammer, WireReplayBuffer, apply_wire_drop, apply_wire_pass, apply_wire_spoof, apply_wire_tamper
 )
 from securelink.transport.udp import UdpReceiver, UdpSender
 
@@ -46,16 +42,12 @@ def extract_seq(raw_bytes: bytes) -> Optional[int]:
     try:
         ver = raw_bytes[0]
         if ver == 1 and len(raw_bytes) >= 12:
-            # SecureLink V1: B(1) H(2) B(1) Q(8) -> seq starts at offset 4
             return struct.unpack(">Q", raw_bytes[4:12])[0]
         elif ver == 2 and len(raw_bytes) >= 16:
-            # SecureLink V2: B(1) H(2) B(1) I(4) Q(8) -> seq at offset 8
             return struct.unpack(">Q", raw_bytes[8:16])[0]
         elif ver == 3 and len(raw_bytes) >= 17:
-            # SecureLink V3: B(1) H(2) H(2) I(4) Q(8) -> seq at offset 9
             return struct.unpack(">Q", raw_bytes[9:17])[0]
         elif ver == 0xFD and len(raw_bytes) >= 5:
-            # MAVLink v2: byte 4 is the packet sequence field (per mavlink_source.py)
             return raw_bytes[4]
     except Exception:
         pass
@@ -131,9 +123,7 @@ def create_control_handler(state: AttackerState, auth_token: Optional[str]):
 
 
 def run_control_server(port: int, state: AttackerState, auth_token: Optional[str]):
-    handler_class = create_control_handler(state, auth_token)
-    server = ReusableHTTPServer(("127.0.0.1", port), handler_class)
-    server.serve_forever()
+    ReusableHTTPServer(("127.0.0.1", port), create_control_handler(state, auth_token)).serve_forever()
 
 
 def main():
@@ -149,6 +139,7 @@ def main():
     parser.add_argument("--dashboard", default=None, help="Dashboard URL")
     parser.add_argument("--session-id", default=None, help="Session UUID")
     parser.add_argument("--token", default=None, help="API token for dashboard ingest")
+    parser.add_argument("--ready-file", default=None, help="Path to touch when socket is bound")
     args = parser.parse_args()
 
     l_host, l_port = parse_host_port(args.listen)
@@ -167,6 +158,14 @@ def main():
 
     receiver = UdpReceiver(l_host, l_port)
     sender = UdpSender(f_host, f_port)
+    import_sec = time.perf_counter() - _t_start
+    print(f"READY name=attacker t={time.time()} import_sec={import_sec:.4f}", flush=True)
+    if args.ready_file:
+        try:
+            from securelink.sessions.readiness import mark_ready
+            mark_ready(args.ready_file)
+        except Exception:
+            pass
     replay_buf = WireReplayBuffer()
     jammer = WireJammer()
     mav_mutator = MavlinkMutator()

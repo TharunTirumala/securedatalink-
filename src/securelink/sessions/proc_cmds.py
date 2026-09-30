@@ -4,35 +4,56 @@ import sys
 from pathlib import Path
 from typing import Dict, List
 from securelink.sessions.models import SessionConfig
+from securelink.sessions.readiness import ready_dir
 
 
 def build_process_commands(config: SessionConfig, s_dir: Path, token: str) -> Dict[str, List[str]]:
     """Build command-line argument lists for all pipeline child processes."""
+    r_dir = ready_dir(s_dir)
     cmds: Dict[str, List[str]] = {}
 
-    # 1. C2 View
-    cmds["c2"] = [
-        sys.executable, "-m", "securelink.cli.c2_view",
-        "--listen", f"127.0.0.1:{config.c2_port}",
-        "--dashboard", config.dashboard_url,
-        "--session-id", config.session_id,
-        "--log", str(s_dir / "c2_received.jsonl"),
-        "--token", token,
-    ]
+    # 1. Drone Sim (if applicable - launched first for early import start)
+    if config.source_type == "drone":
+        d_cmd = [
+            sys.executable, "-m", "securelink.cli.drone_sim",
+            "--send", f"127.0.0.1:{config.tx_port}",
+            "--seed", str(config.drone_seed),
+            "--route", config.drone_route,
+            "--rate-hz", str(config.rate_pps),
+            "--dashboard", config.dashboard_url,
+            "--session-id", config.session_id,
+            "--log", str(s_dir / "drone_truth.jsonl"),
+            "--wait-for", str(r_dir / "tx.ready"),
+            "--wait-for", str(r_dir / "attacker.ready"),
+            "--wait-for", str(r_dir / "rx.ready"),
+        ]
+        if config.count:
+            d_cmd += ["--count", str(config.count)]
+        cmds["drone"] = d_cmd
 
-    # 2. RX Gateway
-    cmds["rx"] = [
-        sys.executable, "-m", "securelink.cli.rx",
-        "--listen", f"127.0.0.1:{config.rx_port}",
-        "--keys-dir", config.keys_dir,
+    # 2. TX Gateway
+    tx_source = "mavlink" if config.source_type == "drone" else config.source_type
+    tx_cmd = [
+        sys.executable, "-m", "securelink.cli.tx",
+        "--send", f"127.0.0.1:{config.attacker_port}",
+        "--source", tx_source,
         "--protect", "on" if config.protect else "off",
-        "--dashboard", config.dashboard_url,
+        "--rate-pps", str(config.rate_pps),
+        "--rekey-every", str(config.rekey_every),
+        "--keys-dir", config.keys_dir,
         "--session-id", config.session_id,
-        "--events-log", str(s_dir / "rx_events.jsonl"),
-        "--output-log", str(s_dir / "rx_output.jsonl"),
-        "--mavlink-out", f"127.0.0.1:{config.c2_port}",
+        "--manifest", str(s_dir / "tx_manifest.jsonl"),
+        "--dashboard", config.dashboard_url,
         "--token", token,
+        "--ready-file", str(r_dir / "tx.ready"),
     ]
+    if config.source_type == "drone":
+        tx_cmd += ["--mavlink-listen", f"127.0.0.1:{config.tx_port}"]
+    if config.source_path:
+        tx_cmd += ["--path", str(config.source_path)]
+    if config.count:
+        tx_cmd += ["--count", str(config.count)]
+    cmds["tx"] = tx_cmd
 
     # 3. Attacker
     cmds["attacker"] = [
@@ -47,45 +68,33 @@ def build_process_commands(config: SessionConfig, s_dir: Path, token: str) -> Di
         "--dashboard", config.dashboard_url,
         "--session-id", config.session_id,
         "--token", token,
+        "--ready-file", str(r_dir / "attacker.ready"),
     ]
 
-    # 4. TX Gateway
-    tx_source = "mavlink" if config.source_type == "drone" else config.source_type
-    tx_cmd = [
-        sys.executable, "-m", "securelink.cli.tx",
-        "--send", f"127.0.0.1:{config.attacker_port}",
-        "--source", tx_source,
-        "--protect", "on" if config.protect else "off",
-        "--rate-pps", str(config.rate_pps),
-        "--rekey-every", str(config.rekey_every),
+    # 4. RX Gateway
+    cmds["rx"] = [
+        sys.executable, "-m", "securelink.cli.rx",
+        "--listen", f"127.0.0.1:{config.rx_port}",
         "--keys-dir", config.keys_dir,
-        "--session-id", config.session_id,
-        "--manifest", str(s_dir / "tx_manifest.jsonl"),
+        "--protect", "on" if config.protect else "off",
         "--dashboard", config.dashboard_url,
+        "--session-id", config.session_id,
+        "--events-log", str(s_dir / "rx_events.jsonl"),
+        "--output-log", str(s_dir / "rx_output.jsonl"),
+        "--mavlink-out", f"127.0.0.1:{config.c2_port}",
         "--token", token,
+        "--ready-file", str(r_dir / "rx.ready"),
     ]
-    if config.source_type == "drone":
-        tx_cmd += ["--mavlink-listen", f"127.0.0.1:{config.tx_port}"]
-    if config.source_path:
-        tx_cmd += ["--path", str(config.source_path)]
-    if config.count:
-        tx_cmd += ["--count", str(config.count)]
-    cmds["tx"] = tx_cmd
 
-    # 5. Drone Sim (if applicable)
-    if config.source_type == "drone":
-        d_cmd = [
-            sys.executable, "-m", "securelink.cli.drone_sim",
-            "--send", f"127.0.0.1:{config.tx_port}",
-            "--seed", str(config.drone_seed),
-            "--route", config.drone_route,
-            "--rate-hz", str(config.rate_pps),
-            "--dashboard", config.dashboard_url,
-            "--session-id", config.session_id,
-            "--log", str(s_dir / "drone_truth.jsonl"),
-        ]
-        if config.count:
-            d_cmd += ["--count", str(config.count)]
-        cmds["drone"] = d_cmd
+    # 5. C2 View
+    cmds["c2"] = [
+        sys.executable, "-m", "securelink.cli.c2_view",
+        "--listen", f"127.0.0.1:{config.c2_port}",
+        "--dashboard", config.dashboard_url,
+        "--session-id", config.session_id,
+        "--log", str(s_dir / "c2_received.jsonl"),
+        "--token", token,
+        "--ready-file", str(r_dir / "c2.ready"),
+    ]
 
     return cmds
