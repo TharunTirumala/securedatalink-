@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# SecureLink Phase 5+6: Manual 5-Terminal Command Reference
+# Run each command in its own dedicated terminal window.
+
+echo "================================================================="
+echo " SECURELINK 5-NODE MULTI-TERMINAL UDP CHAIN"
+echo "================================================================="
+echo ""
+echo "[TERMINAL 1: C2 OPERATOR VIEW (Receiver Output)]"
+echo "python -m securelink.cli.c2_view --listen 127.0.0.1:14551"
+echo ""
+echo "[TERMINAL 2: RX SECURE GATEWAY]"
+echo "python -m securelink.cli.rx --listen 127.0.0.1:9999 --keys-dir keys --protect on --mavlink-out 127.0.0.1:14551"
+echo ""
+echo "[TERMINAL 3: ADVERSARIAL ATTACKER PROXY]"
+echo "python -m securelink.cli.attacker --listen 127.0.0.1:8888 --forward 127.0.0.1:9999 --mode position_rewrite --rate 0.5 --control-port 8889"
+echo ""
+echo "[TERMINAL 4: TX SECURE GATEWAY]"
+echo "python -m securelink.cli.tx --send 127.0.0.1:8888 --source mavlink --mavlink-listen 127.0.0.1:14550 --protect on --keys-dir keys"
+echo ""
+echo "[TERMINAL 5: SIMULATED UAV (MAVLink 2 Stream)]"
+echo "python -m securelink.cli.drone_sim --send 127.0.0.1:14550 --route circle --speed 15.0 --seed 42"
+echo ""
+echo "================================================================="
+echo "To switch attacker mode mid-flight, send a POST to the control port:"
+echo "curl -X POST http://127.0.0.1:8889/control -H 'Content-Type: application/json' -d '{\"mode\": \"tamper\", \"rate\": 1.0}'"
+echo "================================================================="

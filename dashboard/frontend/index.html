@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SECURELINK // Tactical Datalink C2</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="transport.css">
+  <script src="vendor/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Left Sidebar Navigation Rail -->
+    <aside class="app-sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-logo">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--c-cyan)" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+          <span class="sidebar-title">SECURELINK</span>
+        </div>
+      </div>
+      <nav class="sidebar-nav">
+        <a href="#/monitor" class="nav-item active" data-view="monitor">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+            <line x1="8" y1="21" x2="16" y2="21"/>
+            <line x1="12" y1="17" x2="12" y2="21"/>
+          </svg>
+          <span class="nav-text">Live Monitor</span>
+        </a>
+        <a href="#/rekey" class="nav-item" data-view="rekey">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+          </svg>
+          <span class="nav-text">Dynamic Re-keying</span>
+        </a>
+        <a href="#/lab" class="nav-item" data-view="lab">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+          </svg>
+          <span class="nav-text">File Lab</span>
+        </a>
+        <div class="nav-divider"></div>
+        <div class="nav-item locked">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+          <span class="nav-text">Adaptive Filter</span>
+          <span class="phase-tag">PHASE 4</span>
+        </div>
+        <a href="#/transport" class="nav-item" data-view="transport">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="2"/>
+            <path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"/>
+          </svg>
+          <span class="nav-text">UDP Transport</span>
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="footer-status-row">
+          <span class="status-dot" id="sb-status-dot"></span>
+          <span id="sb-status-text">OFFLINE</span>
+        </div>
+        <div class="footer-meta-row">
+          <span>EP: <strong id="sb-epoch" style="color:var(--c-cyan);">1</strong></span>
+          <span>RUN: <strong id="sb-run-id" style="color:var(--c-green);">—</strong></span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <div id="view-monitor" class="view-panel" style="display:none;">
+        <div class="c2-container">
+
+    <!-- Header -->
+    <header class="tactical-header">
+      <div class="header-branding">
+        <span class="hud-pill">DEFENSE TACTICAL NODE // UAV-1</span>
+        <h1>SECURELINK // CYBER-SECURE DATALINK MONITOR</h1>
+      </div>
+      <div class="header-status">
+        <div class="status-indicator">
+          <span class="status-dot" id="status-dot"></span>
+          <span id="conn-status">SYSTEM READY</span>
+        </div>
+        <div class="hud-status-strip" style="display:flex; gap:8px; justify-content:flex-end; margin-top:3px;">
+          <span class="hud-pill">EPOCH: <strong id="hud-epoch" style="color:var(--c-cyan);">1</strong></span>
+          <span class="hud-pill">RE-KEYS: <strong id="hud-rekeys" style="color:var(--c-amber);">0</strong></span>
+          <span class="hud-pill">RUN ID: <strong id="hud-run-id" style="color:var(--c-green);">—</strong></span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Controls Bar -->
+    <section class="control-panel">
+      <div class="control-group">
+        <label>PACKETS</label>
+        <input type="number" id="ctrl-count" value="200" min="10" max="50000" step="50">
+      </div>
+      <div class="control-group">
+        <label>RATE (PPS)</label>
+        <input type="number" id="ctrl-rate" value="25" min="1" max="500" step="5">
+      </div>
+      <div class="control-group">
+        <label class="toggle-label">
+          <input type="checkbox" id="ctrl-random-seed" checked> RANDOM SEED
+        </label>
+        <input type="number" id="ctrl-seed" value="42" disabled placeholder="Random">
+      </div>
+
+      <!-- Attack Sliders -->
+      <div class="slider-group">
+        <div class="slider-item">
+          <label>TAMPER: <span id="val-tamper">10%</span></label>
+          <input type="range" id="ctrl-tamper" min="0" max="100" value="10">
+        </div>
+        <div class="slider-item">
+          <label>REPLAY: <span id="val-replay">10%</span></label>
+          <input type="range" id="ctrl-replay" min="0" max="100" value="10">
+        </div>
+        <div class="slider-item">
+          <label>SPOOF: <span id="val-spoof">5%</span></label>
+          <input type="range" id="ctrl-spoof" min="0" max="100" value="5">
+        </div>
+        <div class="slider-item">
+          <label>DROP: <span id="val-drop">5%</span></label>
+          <input type="range" id="ctrl-drop" min="0" max="100" value="5">
+        </div>
+      </div>
+
+      <!-- Action Buttons & Operator Override -->
+      <div class="action-group">
+        <label class="toggle-label">
+          <input type="checkbox" id="ctrl-mock"> MOCK STREAM
+        </label>
+        <button id="btn-start" class="btn btn-primary">START RUN</button>
+        <button id="btn-stop" class="btn btn-danger" disabled>STOP</button>
+        <button id="btn-rekey" class="btn btn-warning" title="Manually rotate key epoch">FORCE RE-KEY</button>
+      </div>
+
+      <div class="operator-controls">
+        <label>NODE:</label>
+        <input type="number" id="ctrl-sender-id" value="1" min="1" max="255" style="width: 55px;">
+        <button id="btn-block-sender" class="btn btn-outline-danger">BLOCK</button>
+        <button id="btn-unblock-sender" class="btn btn-outline-success">UNBLOCK</button>
+        <span id="blocked-status-pill" class="badge-status normal">NORMAL</span>
+      </div>
+    </section>
+
+    <!-- KPI Metric Counters & Seed Indicator -->
+    <section class="counter-section">
+      <div class="counter-grid">
+        <div class="counter-card counter-total">
+          <div class="card-label">TOTAL FRAMES</div>
+          <div class="card-val" id="cnt-total">0</div>
+        </div>
+        <div class="counter-card counter-auth">
+          <div class="card-label">AUTHENTIC</div>
+          <div class="card-val" id="cnt-auth">0</div>
+        </div>
+        <div class="counter-card counter-tamper">
+          <div class="card-label">TAMPERED</div>
+          <div class="card-val" id="cnt-tamper">0</div>
+        </div>
+        <div class="counter-card counter-replay">
+          <div class="card-label">REPLAYED</div>
+          <div class="card-val" id="cnt-replay">0</div>
+        </div>
+        <div class="counter-card counter-spoof">
+          <div class="card-label">SPOOFED</div>
+          <div class="card-val" id="cnt-spoof">0</div>
+        </div>
+        <div class="counter-card counter-drop">
+          <div class="card-label">DROPPED</div>
+          <div class="card-val" id="cnt-drop">0</div>
+        </div>
+      </div>
+      <div class="seed-bar">
+        <div class="seed-info">
+          <span class="seed-title">RUN SEED:</span>
+          <span class="seed-code" id="current-seed-display">—</span>
+        </div>
+        <button id="btn-copy-seed" class="btn-copy" title="Copy Seed to Replay">COPY SEED</button>
+      </div>
+    </section>
+
+    <!-- Analytics Mid-Section: Latency Chart & Detection Summary -->
+    <section class="analytics-grid">
+      <div class="panel chart-panel">
+        <div class="panel-header">
+          <h3>VERIFICATION LATENCY DYNAMICS (µs)</h3>
+          <span class="hud-subtext" id="latency-stats">p50: 0 µs | p99: 0 µs</span>
+        </div>
+        <div class="chart-wrapper">
+          <canvas id="latencyChart"></canvas>
+        </div>
+      </div>
+
+      <div class="panel summary-panel">
+        <div class="panel-header">
+          <h3>DETECTION & INTEGRITY METRICS</h3>
+          <span class="hud-subtext">EW Threat Mitigation</span>
+        </div>
+        <div class="summary-stats-grid">
+          <div class="metric-box highlight-box">
+            <span class="metric-title">CORRECTLY REJECTED</span>
+            <span class="metric-num text-success" id="sum-correct-pct">100.0%</span>
+            <span class="metric-desc" id="sum-correct-raw">0 / 0 threats</span>
+          </div>
+          <div class="metric-box">
+            <span class="metric-title">EXACT LABEL MATCH</span>
+            <span class="metric-num text-cyan" id="sum-exact-pct">100.0%</span>
+            <span class="metric-desc" id="sum-exact-raw">0 / 0 packets</span>
+          </div>
+          <div class="metric-box alert-box">
+            <span class="metric-title">FALSE ACCEPTS (FA)</span>
+            <span class="metric-num text-green" id="sum-fa">0</span>
+            <span class="metric-desc">Target: 0 (Strict Immunity)</span>
+          </div>
+          <div class="metric-box">
+            <span class="metric-title">FALSE REJECTS (FR)</span>
+            <span class="metric-num text-green" id="sum-fr">0</span>
+            <span class="metric-desc">Target: 0 (No Clean Loss)</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Lower Section: Live Packet Feed & Incident Log -->
+    <section class="feed-grid">
+      <!-- Live Packet Feed -->
+      <div class="panel feed-panel">
+        <div class="panel-header">
+          <h3>LIVE INGESTED PACKET FEED</h3>
+          <span class="hud-subtext">Rolling Ingestion Window (Last 50)</span>
+        </div>
+        <div class="table-scroll">
+          <table class="tactical-table">
+            <thead>
+              <tr>
+                <th>SEQ</th>
+                <th>EPOCH</th>
+                <th>SRC</th>
+                <th>VERDICT</th>
+                <th>REASON</th>
+                <th>TRUTH</th>
+                <th>LATENCY</th>
+                <th>TIMESTAMP</th>
+              </tr>
+            </thead>
+            <tbody id="feed-tbody">
+              <tr class="placeholder-row"><td colspan="8">Awaiting telemetry stream...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Threat Incident Log -->
+      <div class="panel incidents-panel">
+        <div class="panel-header">
+          <h3>AUDIT & THREAT INCIDENT LOG</h3>
+          <button id="btn-clear-incidents" class="btn-text">CLEAR LOG</button>
+        </div>
+        <div class="incident-scroll" id="incidents-container">
+          <div class="no-incidents">No security violations recorded yet.</div>
+        </div>
+      </div>
+    </section>
+  </div><!-- /.c2-container -->
+</div><!-- /#view-monitor -->
+
+
+    <div id="view-rekey" class="view-panel" style="display:none;"></div>
+    <div id="view-lab" class="view-panel" style="display:none;"></div>
+    <div id="view-transport" class="view-panel" style="display:none;"></div>
+  </main>
+</div><!-- /.app-layout -->
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
+

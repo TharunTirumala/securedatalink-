@@ -1,0 +1,37 @@
+# SecureLink Default Configuration
+
+simulation:
+  seed: null
+  count: 200
+  rate_pps: 20
+  sender_id: 1
+  key_epoch: 1
+  rekey_every_packets: 100
+  rekey_grace_epochs: 1
+
+attacks:
+  tamper_prob: 0.10
+  replay_prob: 0.10
+  spoof_prob: 0.05
+  drop_prob: 0.05
+
+replay_guard:
+  window_size: 64
+  max_clock_skew_sec: 30.0
+  enforce_timestamp: true
+
+audit:
+  threat_log_path: "logs/threat_log.jsonl"
+
+server:
+  host: "127.0.0.1"
+  port: 8000
+
+lab:
+  max_bytes: 5242880
+  max_rows: 5000
+  max_columns: 64
+  max_payload_bytes: 1024
+  default_rate_pps: 100
+  default_rekey_every_packets: 50
+
