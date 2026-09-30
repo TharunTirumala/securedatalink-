@@ -154,26 +154,41 @@ export function createLiveCard() {
       };
       scheduleRender();
     },
-    addEvent(ev) {
+    addEvents(batch) {
+      if (!batch || batch.length === 0) return;
+      const items = batch.slice(-50);
       if (rows.length === 0) tbody.innerHTML = '';
-      const v = String(ev.verdict || 'UNKNOWN').toUpperCase();
+      const timeStr = new Date().toLocaleTimeString();
+      const frag = document.createDocumentFragment();
 
-      const tr = document.createElement('tr');
-      const vClass = (v === 'AUTHENTIC') ? 'tag-authentic' : (v === 'TAMPERED') ? 'tag-tampered' : (v === 'REPLAYED') ? 'tag-replayed' : 'tag-alert';
-      tr.innerHTML = `
-        <td style="font-family:monospace;">#${ev.seq || 0}</td>
-        <td style="font-family:monospace;">${ev.epoch || 1}</td>
-        <td>NODE-1</td>
-        <td><span class="badge ${vClass}">${v}</span></td>
-        <td style="color:#718096;">${ev.reason || 'ok'}</td>
-        <td style="color:#718096; font-family:monospace;">${new Date().toLocaleTimeString()}</td>
-      `;
-      tbody.insertBefore(tr, tbody.firstChild);
-      rows.unshift(ev);
-      if (rows.length > 50) {
-        rows.pop();
-        if (tbody.lastChild) tbody.removeChild(tbody.lastChild);
+      for (let i = items.length - 1; i >= 0; i--) {
+        const ev = items[i];
+        const v = String(ev.verdict || 'UNKNOWN').toUpperCase();
+        const vClass = (v === 'AUTHENTIC') ? 'tag-authentic' : (v === 'TAMPERED') ? 'tag-tampered' : (v === 'REPLAYED') ? 'tag-replayed' : 'tag-alert';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td style="font-family:monospace;">#${ev.seq || 0}</td>
+          <td style="font-family:monospace;">${ev.epoch || 1}</td>
+          <td>NODE-1</td>
+          <td><span class="badge ${vClass}">${v}</span></td>
+          <td style="color:#718096;">${ev.reason || 'ok'}</td>
+          <td style="color:#718096; font-family:monospace;">${timeStr}</td>
+        `;
+        frag.appendChild(tr);
       }
+      tbody.insertBefore(frag, tbody.firstChild);
+
+      for (let i = 0; i < items.length; i++) {
+        rows.unshift(items[i]);
+      }
+
+      if (rows.length > 50) rows.length = 50;
+      while (tbody.children.length > 50) {
+        tbody.removeChild(tbody.lastChild);
+      }
+    },
+    addEvent(ev) {
+      this.addEvents([ev]);
     },
   };
 }

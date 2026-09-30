@@ -28,11 +28,43 @@ def get_role():
     return {"role": role}
 
 
+_CONFIG_CACHE: Dict[str, Any] = {}
+_STATE_CACHE: Dict[str, Any] = {}
+_MAX_CACHE_ENTRIES = 8
+
+
+def _cached_config(sid: str):
+    if sid in _CONFIG_CACHE:
+        return _CONFIG_CACHE[sid]
+    cfg = store.load_config(sid)
+    if cfg is not None:
+        if len(_CONFIG_CACHE) >= _MAX_CACHE_ENTRIES:
+            oldest = next(iter(_CONFIG_CACHE))
+            _CONFIG_CACHE.pop(oldest, None)
+        _CONFIG_CACHE[sid] = cfg
+    return cfg
+
+
+def _cached_running_state(sid: str):
+    cached = _STATE_CACHE.get(sid)
+    if cached and cached.start_time and not cached.end_time:
+        return cached
+    st = store.load_state(sid)
+    if st and st.start_time and not st.end_time:
+        if len(_STATE_CACHE) >= _MAX_CACHE_ENTRIES:
+            oldest = next(iter(_STATE_CACHE))
+            _STATE_CACHE.pop(oldest, None)
+        _STATE_CACHE[sid] = st
+    else:
+        _STATE_CACHE.pop(sid, None)
+    return st
+
+
 @router.get("/status")
 def get_transport_status():
     sid = manager.active_session_id
-    cfg = store.load_config(sid) if sid else None
-    st = store.load_state(sid) if sid else None
+    cfg = _cached_config(sid) if sid else None
+    st = _cached_running_state(sid) if sid else None
     uptime = round(time.time() - st.start_time, 1) if (st and st.start_time and not st.end_time) else 0.0
     counters = get_session_counters(sid)
     return {

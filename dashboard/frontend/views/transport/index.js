@@ -236,7 +236,7 @@ export function mountTransport(container) {
       } catch (e) {
         // Quiet poll error
       }
-    }, 250);
+    }, 500);
   }
 
   function stopPolling() {
@@ -261,7 +261,7 @@ export function mountTransport(container) {
   // Subscribe to live incoming WebSocket events from RX gateway
   const unsubscribeWs = bus.on('ws:events', (batch) => {
     if (Array.isArray(batch)) {
-      batch.forEach((ev) => liveCard.addEvent(ev));
+      liveCard.addEvents(batch);
     }
   });
 
